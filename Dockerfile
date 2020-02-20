@@ -1,11 +1,24 @@
---2020-02-20 14:19:52--  https://hub.docker.com/r/citizenstig/dvwa/dockerfile
-Resolving hub.docker.com (hub.docker.com)... 34.200.204.34, 34.233.49.30, 52.206.35.18
-Connecting to hub.docker.com (hub.docker.com)|34.200.204.34|:443... connected.
-HTTP request sent, awaiting response... 200 OK
-Length: 2110 (2.1K) [text/html]
-Saving to: ‘dockerfile’
+FROM tutum/lamp:latest
+MAINTAINER Nikolay Golub <nikolay.v.golub@gmail.com>
 
-     0K ..                                                    100%  452M=0s
+ENV DEBIAN_FRONTEND noninteractive
 
-2020-02-20 14:20:12 (452 MB/s) - ‘dockerfile’ saved [2110/2110]
-
+# Preparation
+RUN \
+  rm -fr /app/* && \
+  apt-get update && apt-get install -yqq wget unzip php5-gd && \
+  rm -rf /var/lib/apt/lists/* && \
+  wget https://github.com/ethicalhack3r/DVWA/archive/v1.9.zip && \
+  unzip /v1.9.zip && \
+  rm -rf app/* && \
+  cp -r /DVWA-1.9/* /app && \
+  rm -rf /DVWA-1.9 && \
+  sed -i "s/^\\[ 'db_user' \]     = 'root'/\[ 'db_user' ] = 'admin'/g" /app/config/config.inc.php && \
+  echo "sed -i \"s/p@ssw0rd/\/g\" /app/config/config.inc.php" >> /create_mysql_admin_user.sh && \
+  echo 'session.save_path = "/tmp"' >> /etc/php5/apache2/php.ini && \
+  sed -ri -e "s/^allow_url_include.*/allow_url_include = On/" /etc/php5/apache2/php.ini && \
+  chmod a+w /app/hackable/uploads && \
+  chmod a+w /app/external/phpids/0.6/lib/IDS/tmp/phpids_log.txt
+   
+EXPOSE 80 3306
+CMD ["/run.sh"]
