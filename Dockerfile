@@ -2,7 +2,7 @@ FROM tutum/lamp:latest
 MAINTAINER Nikolay Golub <nikolay.v.golub@gmail.com>
 
 ENV DEBIAN_FRONTEND noninteractive
-
+  
 # Preparation
 RUN \
   rm -fr /app/* && \
