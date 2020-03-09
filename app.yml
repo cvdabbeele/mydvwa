@@ -31,10 +31,9 @@ spec:
     spec:
       containers:
       - name: mydvwa
-        image: /mydvwa:latest
+        image: $K8S_REGISTRY/mydvwa:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 80
       imagePullSecrets:
       - name: cluster-registry
-
