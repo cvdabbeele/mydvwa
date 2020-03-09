@@ -62,7 +62,7 @@ node('jenkins-jenkins-slave') {
       script {
         // secretNamespace: "default",
         // secretName: "cluster-registry2",
-        //kubernetesDeploy(configs: "app.yml",
+        kubernetesDeploy(configs: "app.yml",
                          kubeconfigId: "kubeconfig",
                          enableConfigSubstitution: true,
                          dockerCredentials: [
