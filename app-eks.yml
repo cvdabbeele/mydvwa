@@ -9,9 +9,9 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-  - port: 8080
+  - port: 80
     name: mydvwa
-    targetPort: 8080
+    targetPort: 80
   selector:
     app: mydvwa
 ---
@@ -41,4 +41,4 @@ spec:
         image: CONTAINER_IMAGE
         imagePullPolicy: Always
         ports:
-        - containerPort: 8080
+        - containerPort: 80
