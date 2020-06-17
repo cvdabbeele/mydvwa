@@ -13,7 +13,7 @@ RUN \
   rm -rf app/* && \
   cp -r /DVWA-1.9/* /app && \
   rm -rf /DVWA-1.9 && \
-  sed -i "s/^\\[ 'db_user' \]     = 'root'/\[ 'db_user' ] = 'admin'/g" /app/config/config.inc.php && \
+  sed -i "s/\[ 'db_user' \]     = 'root'/\[ 'db_user' ] = 'admin'/g" /app/config/config.inc.php && \
   echo "sed -i \"s/p@ssw0rd/\/g\" /app/config/config.inc.php" >> /create_mysql_admin_user.sh && \
   echo 'session.save_path = "/tmp"' >> /etc/php5/apache2/php.ini && \
   sed -ri -e "s/Damn Vulnerable/a Vulnerable/"  /app/index.php && \
