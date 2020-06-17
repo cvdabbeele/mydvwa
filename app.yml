@@ -12,7 +12,7 @@ spec:
   - port: 80
     name: mydvwa
     targetPort: 80
-    nodePort: 30200
+    nodePort: 30103
   selector:
     app: mydvwa
 ---
