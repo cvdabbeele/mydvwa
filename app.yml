@@ -13,7 +13,7 @@ spec:
     name: mydvwa
     targetPort: 80
     nodePort: 30103
-  selector:
+  selector:  
     app: mydvwa
 ---
 apiVersion: apps/v1
