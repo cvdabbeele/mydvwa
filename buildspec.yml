@@ -3,46 +3,56 @@ version: 0.2
 phases:
   install:
     commands:
+      # Install aws-iam-authenticator and kubectl
       - curl -sS -o aws-iam-authenticator https://amazon-eks.s3-us-west-2.amazonaws.com/1.10.3/2018-07-26/bin/linux/amd64/aws-iam-authenticator
       - curl -sS -o kubectl https://amazon-eks.s3-us-west-2.amazonaws.com/1.14.6/2019-08-22/bin/linux/amd64/kubectl
       - chmod +x ./kubectl ./aws-iam-authenticator
       - export PATH=$PWD/:$PATH
-      - openssl s_client -showcerts -connect $SMARTCHECK_HOST:443 < /dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > smcert.crt
-      - cp smcert.crt /usr/local/share/ca-certificates/$SMARTCHECK_HOST.crt
-      - update-ca-certificates
-      - apt-get update && apt-get -y install jq python3-pip python3-dev && pip3 install --upgrade awscli
-      - apt-get install curl -y
+
+      # adding our self-signed certificate to the trust store
+      - openssl s_client -showcerts -connect $SMARTCHECK_HOST:443 < /dev/null | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' > /usr/local/share/ca-certificates/$SMARTCHECK_HOST.crt && update-ca-certificates
+      - apt-get update && apt-get -y install jq 
+      # apt-get -y install python3-pip python3-dev
+      # Install awscli v2
+      - aws --version
+      - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+      - unzip -q awscliv2.zip
+      - ./aws/install  
+      - aws --version
 
   pre_build:
-    commands:
+    commands: 
       - TAG="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
       - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' app-eks.yml
-      - $(aws ecr get-login --no-include-email)
+      - ACCOUNT_ID=`echo $EKS_KUBECTL_ROLE_ARN | awk -F  ":" '{print $5}'`
+      - aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+      - echo ecr="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
       - export KUBECONFIG=$HOME/.kube/config
+
+      # Logging in to dockerhub (unauthenticated logins seem to share common connections and hit the dockerhub pull rate-limits)
       - echo "--------------------------------Logging in to docker hub --------------------------------------------------------------"
       - echo $DOCKERHUB_PASSWORD | docker login --username $DOCKERHUB_USERNAME --password-stdin
       - echo "--------------------------------getting current pull-rate state from docker hub----------------------------------------"
       - TOKEN=$(curl  --user "${$DOCKERHUB_USERNAME}:${$DOCKERHUB_PASSWORD}" "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
       - curl --head -H "Authorization:Bearer $TOKEN" https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest | grep -i rate
-
+  
   build:
-    commands:
+    commands: 
       - docker build --tag $REPOSITORY_URI:$TAG .
 
   post_build:
     commands:
+      # Security-scanning the image
       - echo "$REPOSITORY_URI:$TAG"
-      - $(aws ecr get-login --no-include-email)
-
       - echo 'Triggering a pre-registry scan'
-      - echo 'scans the container image before it is being pushed to the ECR registry'
+      - echo 'scans the image image before it is being pushed to the ECR registry'
       - echo 'This ensures that we only get clean images in the ECR'
       - echo 'Adjust the --findings-threshold, here below, to set which type and how many vulnerabilities you want to allow'
       - >-
         docker run -v /var/run/docker.sock:/var/run/docker.sock
         deepsecurity/smartcheck-scan-action
         --image-name="$REPOSITORY_URI:$TAG"
-        --findings-threshold="{\"malware\":0,\"vulnerabilities\":{\"defcon1\":0,\"critical\":100,\"high\":100},\"contents\":{\"defcon1\":0,\"critical\":0,\"high\":1},\"checklists\":{\"defcon1\":0,\"critical\":0,\"high\":0}}"
+        --findings-threshold="{\"malware\": 0,\"vulnerabilities\":{\"defcon1\": 0,\"critical\": 0,\"high\": 0},\"contents\":{\"defcon1\": 0,\"critical\": 0,\"high\": 0},\"checklists\":{\"defcon1\": 0,\"critical\": 0,\"high\": 0}}"
         --preregistry-host="$SMARTCHECK_HOST:5000"
         --smartcheck-host="$SMARTCHECK_HOST"
         --smartcheck-user="$SMARTCHECK_USER"
@@ -51,37 +61,42 @@ phases:
         --preregistry-scan
         --preregistry-user="$PRE_SCAN_USER"
         --preregistry-password="$PRE_SCAN_PWD"
-      - $(aws ecr get-login --no-include-email)
       - docker push $REPOSITORY_URI:$TAG
-
+      - docker tag $REPOSITORY_URI:$TAG $REPOSITORY_URI:latest
+      - docker push $REPOSITORY_URI:latest
+      
       - echo 'giving the previous push command some time to settle'
-      - sleep 20
+      - sleep 5
 
-      - echo 'scanning the container again, but now in the ECR registry, so we can leverage the scan results in CloudOneContainerSecurity'
+      # Security-scanning the image again, but now in the ECR registry, so we can leverage the scan results in CloudOneContainerSecurity'
+      - echo 'scanning the image again, but now in the ECR registry, so we can leverage the scan results in CloudOneContainerSecurity'
       - >-
         docker run -v /var/run/docker.sock:/var/run/docker.sock
         deepsecurity/smartcheck-scan-action
         --image-name="$REPOSITORY_URI:$TAG"
-        --findings-threshold="{\"malware\":0,\"vulnerabilities\":{\"defcon1\":0,\"critical\":100,\"high\":100},\"contents\":{\"defcon1\":0,\"critical\":0,\"high\":1},\"checklists\":{\"defcon1\":0,\"critical\":0,\"high\":0}}"
+        --findings-threshold="{\"malware\": 0,\"vulnerabilities\":{\"defcon1\": 0,\"critical\": 0,\"high\": 0},\"contents\":{\"defcon1\": 0,\"critical\": 0,\"high\": 0},\"checklists\":{\"defcon1\": 0,\"critical\": 0,\"high\": 0}}"
         --smartcheck-host="$SMARTCHECK_HOST"
         --smartcheck-user="$SMARTCHECK_USER"
         --smartcheck-password="$SMARTCHECK_PWD"
         --insecure-skip-tls-verify="true"
         --image-pull-auth="{\"aws\":{\"region\":\"${AWS_REGION}\",\"accessKeyID\":\"${AWS_ACCESS_KEY_ID}\",\"secretAccessKey\":\"${AWS_SECRET_ACCESS_KEY}\"}}"
 
+      # update kubeconfig for eks
       - CREDENTIALS=$(aws sts assume-role --role-arn $EKS_KUBECTL_ROLE_ARN --role-session-name codebuild-kubectl --duration-seconds 900)
       - export AWS_ACCESS_KEY_ID="$(echo ${CREDENTIALS} | jq -r '.Credentials.AccessKeyId')"
       - export AWS_SECRET_ACCESS_KEY="$(echo ${CREDENTIALS} | jq -r '.Credentials.SecretAccessKey')"
       - export AWS_SESSION_TOKEN="$(echo ${CREDENTIALS} | jq -r '.Credentials.SessionToken')"
       - export AWS_EXPIRATION=$(echo ${CREDENTIALS} | jq -r '.Credentials.Expiration')
-      - aws eks update-kubeconfig --name $EKS_CLUSTER_NAME
+      - echo EKS_CLUSTER_NAME = $EKS_CLUSTER_NAME
+      - aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}
+
+      # on-the-fly insert CloudOne ApplicationSecurity keys
       - sed -i s/\$APPSEC_KEY/$APPSEC_KEY/g app-eks.yml
       - sed -i s/\$APPSEC_SECRET/$APPSEC_SECRET/g app-eks.yml
+
+      # deploy the app
       - kubectl apply -f app-eks.yml
       - printf '[{"name":"c1-app-sec-moneyx","imageUri":"%s"}]' $REPOSITORY_URI:$TAG > build.json
-      - echo "--------------------------------getting current pull-rate state from docker hub----------------------------------------"
-      - TOKEN=$(curl  --user "${$DOCKERHUB_USERNAME}:${$DOCKERHUB_PASSWORD}" "https://auth.docker.io/token?service=registry.docker.io&scope=repository:ratelimitpreview/test:pull" | jq -r .token)
-      - curl --head -H "Authorization:Bearer $TOKEN" https://registry-1.docker.io/v2/ratelimitpreview/test/manifests/latest | grep -i rate
-      - printf '[{"name":"myDVWA","imageUri":"%s"}]' $REPOSITORY_URI:$TAG > build.json
+
 artifacts:
   files: build.json
