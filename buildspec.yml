@@ -23,7 +23,6 @@ phases:
   pre_build:
     commands: 
       - TAG="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
-      - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:$TAG"'@' app-eks.yml
       - ACCOUNT_ID=`echo $EKS_KUBECTL_ROLE_ARN | awk -F  ":" '{print $5}'`
       - aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
       - echo ecr="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
@@ -90,9 +89,10 @@ phases:
       - echo EKS_CLUSTER_NAME = $EKS_CLUSTER_NAME
       - aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}
 
-      # on-the-fly insert CloudOne ApplicationSecurity keys
+      # on-the-fly insert CloudOne ApplicationSecurity keys and the image version to be deployed
       - sed -i s/\$APPSEC_KEY/$APPSEC_KEY/g app-eks.yml
       - sed -i s/\$APPSEC_SECRET/$APPSEC_SECRET/g app-eks.yml
+      - sed -i 's@CONTAINER_IMAGE@'"$REPOSITORY_URI:${TAG}"'@' app-eks.yml
 
       # deploy the app
       - kubectl apply -f app-eks.yml
